@@ -30,3 +30,9 @@ nav .cube{min-width:72px;padding:6px 2px;border-width:2px}nav .cube b{font-size:
 .map button{border:2px solid var(--line);border-radius:12px;padding:16px 4px;background:#fff;cursor:pointer}
 .map button.on{border-color:var(--g)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto}}
+#install[hidden]{display:none}
+.chat p{margin:4px 0;padding:6px 10px;border-radius:12px;max-width:85%}.chat .u{background:var(--lime);margin-left:auto}.chat .b{background:var(--line)}
+#lm{height:300px;border-radius:14px;margin:8px 0}
+.chk{display:inline-flex;align-items:center;gap:4px;margin:3px;padding:6px 10px;border:2px solid var(--line);border-radius:12px;background:#fff}.chk input{width:auto;margin:0}
+.thumb{width:72px;height:72px;object-fit:cover;border-radius:10px}.warn{border-left:6px solid var(--sun)}.bad{border-left-color:#c0392b}.ok{border-left-color:var(--g)}
+@media print{header,nav,.btn,input,select,textarea{display:none!important}body{padding:0}}

@@ -1,67 +1,114 @@
-// Sprout – basic PWA. Sample data is marked "sample"; replace with real sources later.
-const T={
-home:["Home","முகப்பு","මුල් පිටුව"],account:["My account","என் கணக்கு","මගේ ගිණුම"],advice:["Advice","ஆலோசனை","උපදෙස්"],
-alerts:["Alerts","எச்சரிக்கைகள்","අනතුරු ඇඟවීම්"],contact:["Contact","தொடர்பு","සම්බන්ධ වන්න"],fert:["Fertilizer","உரம்","පොහොර"],
-map:["Map","வரைபடம்","සිතියම"],market:["Market","சந்தை","වෙළඳපොළ"],budget:["Budget","வரவு செலவு","අයවැය"],
-hero:["See how your plant is doing","உங்கள் பயிர் எப்படி இருக்கிறது","ඔබේ ගස කොහොමද බලන්න"],
-login:["Log in","உள்நுழை","ඇතුල් වන්න"],install:["Install app","செயலியை நிறுவு","යෙදුම ස්ථාපනය කරන්න"],
+// Sprout v2. Live data: Open-Meteo (weather) and NASA POWER (soil wetness, rain). Community, market and logs are stored on this device only.
+const T={home:["Home","முகப்பு","මුල් පිටුව"],account:["My account","என் கணக்கு","මගේ ගිණුම"],advice:["Advice","ஆலோசனை","උපදෙස්"],doctor:["Crop doctor","பயிர் மருத்துவர்","බෝග වෛද්‍ය"],
+alerts:["Alerts","எச்சரிக்கைகள்","අනතුරු ඇඟවීම්"],contact:["Contact","தொடர்பு","සම්බන්ධ වන්න"],fert:["Fertilizer","உரம்","පොහොර"],map:["Map","வரைபடம்","සිතියම"],market:["Market","சந்தை","වෙළඳපොළ"],budget:["Budget","வரவு செலவு","අයවැය"],
+hero:["See how your plant is doing","உங்கள் பயிர் எப்படி இருக்கிறது","ඔබේ ගස කොහොමද බලන්න"],login:["Log in","உள்நுழை","ඇතුල් වන්න"],install:["Install app","செயலியை நிறுவு","යෙදුම ස්ථාපනය කරන්න"],
 income:["More income","அதிக வருமானம்","වැඩි ආදායම"],water:["Save water","நீரை சேமிக்க","ජලය ඉතිරි කරන්න"],risk:["Lower risk","குறைந்த அபாயம்","අඩු අවදානම"],
-name:["Your name","உங்கள் பெயர்","ඔබේ නම"],district:["District","மாவட்டம்","දිස්ත්‍රික්කය"],save:["Save","சேமி","සුරකින්න"]};
-const LI={en:0,ta:1,si:2};let lang=localStorage.sprLang||"en";
+name:["Your name","உங்கள் பெயர்","ඔබේ නම"],district:["District","மாவட்டம்","දිස්ත්‍රික්කය"],save:["Save","சேமி","සුරකින්න"],ask:["Ask","கேள்","අසන්න"]};
+const LI={en:0,ta:1,si:2},VL={en:"en-IN",ta:"ta-LK",si:"si-LK"};let lang=localStorage.sprLang||"en";
 const t=k=>(T[k]||[k])[LI[lang]]||T[k][0];
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const ld=(k,d)=>{try{return JSON.parse(localStorage[k])??d}catch{return d}};
-const sv=(k,v)=>localStorage[k]=JSON.stringify(v);
-const D=["Anuradhapura","Polonnaruwa","Vavuniya","Mannar","Trincomalee","Ampara","Hambantota","Monaragala"];
-const TABS=[["home","🏠"],["account","👤"],["advice","💡"],["alerts","🔔"],["map","🗺️"],["market","🧺"],["fert","🧪"],["budget","💰"],["contact","☎️"]];
-let user=ld("sprUser",null),prio="income",smap={},mapSel=null;
-fetch("data/smap.json").then(r=>r.json()).then(j=>smap=j).catch(()=>{});
+const ld=(k,d)=>{try{return JSON.parse(localStorage[k])??d}catch{return d}};const sv=(k,v)=>localStorage[k]=JSON.stringify(v);
+const $=id=>document.getElementById(id),val=id=>$(id)?.value||"";
+const DC={Anuradhapura:[8.31,80.4],Polonnaruwa:[7.94,81.0],Vavuniya:[8.75,80.5],Mannar:[8.98,79.91],Trincomalee:[8.57,81.23],Ampara:[7.3,81.67],Hambantota:[6.12,81.12],Monaragala:[6.87,81.35]};
+const D=Object.keys(DC);
+const TABS=[["home","🏠"],["account","👤"],["advice","💡"],["doctor","🩺"],["alerts","🔔"],["map","🗺️"],["market","🧺"],["fert","🧪"],["budget","💰"],["contact","☎️"]];
+let user=ld("sprUser",null),prio="income",WX=null,NA=null,chat=[],found=[],photo="";
+const here=()=>user?.lat?[user.lat,user.lon]:DC[user?.district||"Anuradhapura"];
 
-const STRAT=[
-{n:"Current rotation (maize, then fallow)",s:{income:2,water:2,risk:2},why:"Baseline for comparison.",ev:"Fallow periods leave soil bare (MODIS vegetation gaps).",ben:"Familiar, low effort.",gap:"Needs the farmer's real field history.",rk:"Erosion and falling organic matter."},
-{n:"Maize, then green gram (mung bean)",s:{income:4,water:3,risk:3},why:"Legumes add nitrogen and fill the bare season.",ev:"NASA POWER rainfall and SMAP soil moisture suggest the Yala window can support a short legume.",ben:"Less fertilizer, extra income, better cover.",gap:"Local soil tests and seed availability.",rk:"Short-season dry spells; confirm with an agri officer."},
-{n:"Finger millet and cowpea",s:{income:3,water:5,risk:4},why:"Drought-tolerant crops use less water and fit dry spells.",ev:"ECOSTRESS/MODIS heat and vegetation stress patterns in dry months.",ben:"Lower water demand, steadier yields.",gap:"Market demand and prices by district.",rk:"Lower market price; labour at harvest."}];
+// ---- live data ----
+async function weather(lat,lon){const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,wind_speed_10m&daily=temperature_2m_max,precipitation_sum,wind_speed_10m_max&forecast_days=3&timezone=auto`);return WX=await r.json()}
+async function nasa(lat,lon){const f=n=>{const d=new Date(Date.now()-n*864e5);return d.toISOString().slice(0,10).replace(/-/g,"")};
+const r=await fetch(`https://power.larc.nasa.gov/api/temporal/daily/point?parameters=PRECTOTCORR,T2M,GWETROOT,GWETTOP&community=AG&longitude=${lon}&latitude=${lat}&start=${f(33)}&end=${f(3)}&format=JSON`);
+const p=(await r.json()).properties.parameter,ok=o=>Object.values(o).filter(v=>v>-900),av=a=>a.length?a.reduce((x,y)=>x+y)/a.length:null;
+const rt=ok(p.GWETROOT);return NA={root:av(rt.slice(-7)),top:av(ok(p.GWETTOP).slice(-7)),rain:ok(p.PRECTOTCORR).reduce((x,y)=>x+y,0),temp:av(ok(p.T2M))}}
+const sm=v=>v==null?"–":v<.3?"Dry":v<.5?"Moderate":"Wet";
+const nasaHtml=n=>`<p>🛰️ NASA POWER (last 7 days): root-zone wetness <b>${n.root?.toFixed(2)??"–"}</b> (${sm(n.root)}), surface <b>${n.top?.toFixed(2)??"–"}</b>; 30-day rain <b>${n.rain.toFixed(0)} mm</b>; mean temp <b>${n.temp?.toFixed(1)}°C</b></p>`;
+function alertsFrom(w,n){const d=w.daily,a=[];
+if(d.temperature_2m_max[0]>=35||d.temperature_2m_max[1]>=35)a.push(["🌡️","Heat: "+Math.max(...d.temperature_2m_max)+"°C expected. Water early morning or evening, mulch.","warn","advice"]);
+if(Math.max(...d.precipitation_sum)>=20)a.push(["🌧️","Heavy rain ("+Math.max(...d.precipitation_sum)+" mm). Delay fertilizer, clear drains.","bad","fert"]);
+if(Math.max(...d.wind_speed_10m_max)>=30)a.push(["💨","Strong wind up to "+Math.max(...d.wind_speed_10m_max)+" km/h. Support young plants.","warn","advice"]);
+if(d.wind_speed_10m_max[0]<=15&&d.precipitation_sum[0]<1)a.push(["✅","Good spray window today: low wind, no rain.","ok","doctor"]);else a.push(["⏸️","Not a good spray window today (wind or rain).","warn","doctor"]);
+if(n&&n.root!=null&&n.root<.3)a.push(["💧","Root-zone soil is dry (NASA). Plan irrigation or drought-tolerant crops.","bad","advice"]);
+if(d.precipitation_sum[0]<1&&d.temperature_2m_max[0]>=32)a.push(["💧","Hot and dry today: water plants.","warn","advice"]);return a}
 
-const view=document.getElementById("view");
-function nav(){const h=(location.hash||"#home").slice(1);document.getElementById("nav").innerHTML=TABS.map(([k,e])=>`<a class="cube ${k===h?"on":""}" href="#${k}" ${k===h?'aria-current="page"':""}><b>${e}</b><span>${esc(t(k))}</span></a>`).join("")}
-function loginForm(){return `<div class="card"><h3>${t("login")}</h3><label>${t("name")}<input id="ln"></label><label>${t("district")}<select id="ld">${D.map(d=>`<option>${d}</option>`).join("")}</select></label><button class="btn" data-act="login">${t("login")}</button><button class="btn alt" data-act="gps">📍 GPS</button><p class="note">Demo login: data stays on this device only.</p></div>`}
+// ---- knowledge ----
+const SYM={yellow:"🟡 Yellow leaves",spots:"🟤 Brown spots",powder:"⚪ White powder",holes:"🕳️ Holes in leaves",curl:"🌀 Curled leaves",wilt:"🥀 Wilting",stunt:"📏 Stunted growth",insects:"🐛 Insects on plant"};
+const CAUSE=[["Nitrogen deficiency",["yellow","stunt"],"Add compost or urea at label rate; a legume in rotation helps next season."],["Fungal leaf spot or blight",["spots","wilt"],"Remove infected leaves, water at the base in the morning, use a registered fungicide at label rate."],["Powdery mildew",["powder"],"Improve airflow; neem or sulfur option at label rate."],["Caterpillar or beetle damage",["holes"],"Hand-pick, neem spray; check maize for fall armyworm."],["Aphids, whitefly or mites",["insects","curl","yellow"],"Neem oil or soap spray; yellow sticky traps."],["Water stress",["wilt","curl"],"Irrigate at dawn or dusk; mulch the soil."],["Root rot or wilt disease",["wilt","stunt"],"Improve drainage, remove sick plants, rotate to a different crop family."]];
+const KB=[[/rain|மழை|වැස්ස/i,()=>WX?`Rain forecast (3 days): ${WX.daily.precipitation_sum.join(", ")} mm. Delay fertilizer if over 20 mm.`:"Open Alerts to load the forecast first."],
+[/water|irrigat|நீர்|ජලය/i,()=>NA?`Root-zone wetness is ${NA.root?.toFixed(2)} (${sm(NA.root)}). ${NA.root<.3?"Irrigate early morning.":"No urgent irrigation."}`:"Open Advice to load NASA soil data first."],
+[/fertili|urea|உரம்|පොහොර/i,()=>"Test soil first. Compost plus split doses reduce waste; avoid applying before heavy rain. See the Fertilizer tab."],
+[/pest|insect|disease|பூச்சி|කෘමි/i,()=>"Use the Crop doctor tab: choose symptoms and get likely causes and actions."],
+[/rotat|crop|பயிர்|බෝග/i,()=>"Open Advice, pick your priority and compare three rotations. Legumes (green gram, cowpea) add nitrogen."],
+[/sell|price|market|சந்தை|වෙළඳ/i,()=>"Post your harvest in the Market tab so buyers and transporters can see it."]];
+const STRAT=[{n:"Current rotation (maize, then fallow)",s:{income:2,water:2,risk:2},why:"Baseline for comparison.",ev:"Fallow leaves soil bare.",ben:"Familiar, low effort.",gap:"Needs your real field history.",rk:"Erosion, falling organic matter."},
+{n:"Maize, then green gram (mung bean)",s:{income:4,water:3,risk:3},why:"Legumes add nitrogen and fill the bare season.",ev:"Use the soil wetness above to judge the planting window.",ben:"Less fertilizer, extra income.",gap:"Soil tests, seed supply.",rk:"Short dry spells; confirm with an agri officer."},
+{n:"Finger millet and cowpea",s:{income:3,water:5,risk:4},why:"Drought-tolerant crops use less water.",ev:"Best when root-zone wetness is low.",ben:"Lower water demand, steadier yields.",gap:"District market prices.",rk:"Lower price, harvest labour."}];
+
+// ---- pages ----
+const loginForm=()=>`<div class="card"><h3>${t("login")}</h3><label>${t("name")}<input id="ln"></label><label>${t("district")}<select id="ld">${D.map(d=>`<option>${d}</option>`).join("")}</select></label><button class="btn" data-act="login">${t("login")}</button><button class="btn alt" data-act="gps">📍 GPS</button><p class="note">Demo login: data stays on this device.</p></div>`;
+const list=k=>ld(k,[]).map(x=>`<p>${esc(x)}</p>`).join("")||"<p class=note>Nothing yet.</p>";
+const adder=(k,ph,btn="+")=>`<input id="in_${k}" placeholder="${ph}"><button class="btn" data-act="add" data-k="${k}">${btn}</button>`;
 const P={
-home:()=>`<section class="hero"><div><svg class="plant" viewBox="0 0 120 140"><g class="sway"><path d="M60 135V60" stroke="#2f7d3a" stroke-width="6" stroke-linecap="round"/><path d="M60 80C60 45 35 30 10 35c0 35 22 52 50 45z" fill="#6fb83a"/><path d="M60 62c0-30 22-45 48-42 0 30-20 47-48 42z" fill="#a6d84a"/></g><ellipse cx="60" cy="136" rx="40" ry="5" fill="#4a3426"/></svg><h2>${t("hero")}</h2><p>⬇️</p></div></section>
-<div class="grid">${TABS.slice(1).map(([k,e])=>`<a class="cube" href="#${k}"><b>${e}</b><span>${esc(t(k))}</span></a>`).join("")}</div>${user?`<p><a class="btn" href="#account">${t("account")}</a></p>`:loginForm()}`,
-account:()=>{if(!user)return `<h2>${t("account")}</h2>`+loginForm();const c=ld("sprCrops",[]),a=ld("sprAdv",[]);return `<h2>${esc(user.name)}</h2><div class="card"><p>📍 ${esc(user.district)}</p><p>💰 ${esc(ld("sprBudget","–"))} LKR</p></div>
-<div class="card"><h3>🌾 Past crops</h3>${c.map(x=>`<p>${esc(x)}</p>`).join("")||"<p class=note>None yet.</p>"}<input id="nc" placeholder="Crop, season, yield"><button class="btn" data-act="addcrop">+</button></div>
-<div class="card"><h3>📜 Advice history</h3>${a.map(x=>`<p>${esc(x)}</p>`).join("")||"<p class=note>Saved advice appears here.</p>"}</div>
+home:()=>`<section class="hero"><div><svg class="plant" viewBox="0 0 120 140"><g class="sway"><path d="M60 135V60" stroke="#2f7d3a" stroke-width="6" stroke-linecap="round"/><path d="M60 80C60 45 35 30 10 35c0 35 22 52 50 45z" fill="#6fb83a"/><path d="M60 62c0-30 22-45 48-42 0 30-20 47-48 42z" fill="#a6d84a"/></g><ellipse cx="60" cy="136" rx="40" ry="5" fill="#4a3426"/></svg><h2>${t("hero")}</h2><p id="hw" class="note"></p><p>⬇️</p></div></section><div class="grid">${TABS.slice(1).map(([k,e])=>`<a class="cube" href="#${k}"><b>${e}</b><span>${esc(t(k))}</span></a>`).join("")}</div>${user?`<p><a class="btn" href="#account">${t("account")}</a></p>`:loginForm()}`,
+account:()=>{if(!user)return `<h2>${t("account")}</h2>`+loginForm();const f=ld("sprFields",[]);return `<h2>${esc(user.name)}</h2><div class="card"><p>📍 ${esc(user.district)}</p><p>💰 ${esc(ld("sprBudget","–"))} LKR</p></div>
+<div class="card"><h3>🌾 Fields</h3>${f.map(x=>`<p>${esc(x.name)}: ${x.ha} ha</p>`).join("")||"<p class=note>Draw fields on the Map tab.</p>"}</div>
+<div class="card"><h3>🌾 Past crops</h3>${list("sprCrops")}${adder("sprCrops","Crop, season, yield")}</div>
+<div class="card"><h3>📜 Advice history</h3>${list("sprAdv")}</div>
+<div class="card"><h3>📓 Field notes</h3>${list("sprNotes")}${adder("sprNotes","Scouting note")}</div>
 <div class="card"><h3>✏️ Edit profile</h3><input id="ln" value="${esc(user.name)}"><select id="ld">${D.map(d=>`<option ${d==user.district?"selected":""}>${d}</option>`).join("")}</select><button class="btn" data-act="login">${t("save")}</button><button class="btn alt" data-act="gps">📍 GPS</button><button class="btn sky" data-act="logout">Log out</button></div>`},
 advice:()=>{const r=[...STRAT].sort((x,y)=>y.s[prio]-x.s[prio]);return `<h2>${t("advice")}</h2>
-<div class="card"><button class="btn" data-act="msg">🤖 AI</button><button class="btn alt" data-act="msg">👩‍🌾 Agri specialist</button><button class="btn sky" data-act="msg">🎤 Voice note</button><textarea id="chat" rows="2" placeholder="Ask a question…"></textarea><p class="note" id="chatnote"></p></div>
-<div class="card"><h3>📷 Crop photo check</h3><input type="file" accept="image/*" capture="environment" id="ph"><p class="note">AI pest and nutrient detection will connect here.</p></div>
+<div class="card chat"><div id="cl">${chat.map(m=>`<p class="${m[0]}">${esc(m[1])}</p>`).join("")||"<p class=note>Ask about rain, water, fertilizer, pests, crops or selling.</p>"}</div><input id="cq" placeholder="${t("ask")}…"><button class="btn" data-act="chat">🤖 ${t("ask")}</button><button class="btn sky" data-act="voice">🎤</button><button class="btn alt" data-act="spec">👩‍🌾 Agri officer</button><p class="note" id="cn">Rule-based assistant using live weather and NASA data. Real AI needs a server.</p></div>
+<div class="card" id="nz">🛰️ Loading NASA data…</div>
 <h3>🔄 Crop rotation</h3>${["income","water","risk"].map(k=>`<button class="btn ${k==prio?"":"alt"}" data-act="prio" data-k="${k}">${{income:"💰",water:"💧",risk:"🛡️"}[k]} ${t(k)}</button>`).join("")}
-${r.map((s,i)=>`<div class="card"><h3>${i+1}. ${s.n}</h3><div class="bar"><i style="width:${s.s[prio]*20}%"></i></div><p><b>Why:</b> ${s.why}<br><b>Evidence:</b> ${s.ev}<br><b>Benefits:</b> ${s.ben}<br><b>Gaps:</b> ${s.gap}<br><b>Risks:</b> ${s.rk}</p><button class="btn" data-act="saveadv" data-n="${i}">Save to history</button></div>`).join("")}
-<p class="note">Sample reasoning to show the layout. Supports farmer judgment; confirm locally with agri experts. Data: SMAP, GPM, NASA POWER, MODIS, ECOSTRESS.</p>`},
-alerts:()=>`<h2>${t("alerts")}</h2>${[["🌡️","Heat alert: water plants early morning","advice"],["🌧️","Rain expected in 2 days: delay fertilizer","fert"],["💨","Strong wind: support young plants","advice"],["💧","Soil moisture low: irrigate this week","advice"]].map(a=>`<div class="card">${a[0]} ${a[1]} <a href="#${a[2]}">→ ${t(a[2])}</a></div>`).join("")}<p class="note">Sample alerts.</p>`,
-map:()=>`<h2>${t("map")}</h2><div class="map">${D.map(d=>`<button data-act="dist" data-d="${d}" class="${d==mapSel?"on":""}">📍<br>${d}</button>`).join("")}</div>${mapSel?`<div class="card"><h3>${mapSel}</h3><p>Soil moisture (SMAP): ${smap[mapSel]??"–"}</p><p class="note">Simple district tiles; a real Sri Lanka map comes next.</p></div>`:""}`,
-market:()=>{const l=ld("sprMkt",[]);return `<h2>${t("market")}</h2><div class="card"><h3>🧺 Sell</h3><input id="mc" placeholder="Crop"><input id="mk" type="number" placeholder="Kilos"><input id="mp" type="number" placeholder="Price per kg (LKR)"><button class="btn" data-act="sell">+</button>${l.map(x=>`<p>${esc(x)}</p>`).join("")}</div><div class="card"><h3>🛒 Buyer requests (sample)</h3><p>Colombo trader: 500 kg green gram</p><p>Hotel supplier: 200 kg tomatoes</p></div><div class="card"><h3>🚚 Transport help (sample)</h3><p>Lorry, Anuradhapura: 3 tonnes</p></div>`},
-fert:()=>`<h2>${t("fert")}</h2>${[["Urea","–"],["TSP","–"],["Organic compost","–"]].map(f=>`<div class="card">🧪 ${f[0]} <span class="tag">price: add data</span></div>`).join("")}<a class="btn" href="#advice">💡 ${t("advice")}</a>`,
-budget:()=>`<h2>${t("budget")}</h2><div class="card"><input id="bg" type="number" placeholder="LKR" value="${esc(ld("sprBudget",""))}"><button class="btn" data-act="budget">${t("save")}</button><p>Saved budget appears in <a href="#account">${t("account")}</a>. See <a href="#advice">${t("advice")}</a> and <a href="#fert">${t("fert")}</a>.</p></div>`,
-contact:()=>`<h2>${t("contact")}</h2><div class="card"><a class="btn" href="tel:0000000000">📞 Agri department hotline (sample)</a><a class="btn alt" href="mailto:help@example.org">✉️ Email</a></div><div class="card"><h3>Service centers (sample)</h3><p>Anuradhapura Agri Service Center</p></div><div class="card"><h3>🤝 Community and charity (sample)</h3><p>Farmers' Friends: seed donation drive</p></div>`};
-function render(){const h=(location.hash||"#home").slice(1);view.innerHTML=(P[h]||P.home)();nav();document.documentElement.lang=lang;document.getElementById("install").textContent="⬇️ "+t("install")}
-document.addEventListener("click",e=>{const b=e.target.closest("[data-act]");if(!b)return;const a=b.dataset.act,v=id=>document.getElementById(id)?.value;
-if(a=="login"){user={name:v("ln")||"Farmer",district:v("ld")};sv("sprUser",user);location.hash="#account";render();return}
-if(a=="logout"){user=null;localStorage.removeItem("sprUser")}
-if(a=="gps")navigator.geolocation?.getCurrentPosition(p=>alert("Location found: "+p.coords.latitude.toFixed(2)+", "+p.coords.longitude.toFixed(2)+". Pick the nearest district."),()=>alert("Location unavailable. Choose a district manually."));
-if(a=="addcrop"&&v("nc")){sv("sprCrops",[...ld("sprCrops",[]),v("nc")])}
-if(a=="saveadv"){const s=[...STRAT].sort((x,y)=>y.s[prio]-x.s[prio])[b.dataset.n];sv("sprAdv",[...ld("sprAdv",[]),new Date().toLocaleDateString()+": "+s.n])}
-if(a=="prio")prio=b.dataset.k;
-if(a=="dist")mapSel=b.dataset.d;
-if(a=="msg"){document.getElementById("chatnote").textContent="Chat and voice will connect here."}
-if(a=="sell"&&v("mc")){sv("sprMkt",[...ld("sprMkt",[]),`${v("mc")}: ${v("mk")} kg @ ${v("mp")} LKR`])}
-if(a=="budget"){sv("sprBudget",v("bg"))}
-if(a!="msg")render()});
-document.getElementById("lang").value=lang;
-document.getElementById("lang").onchange=e=>{lang=e.target.value;localStorage.sprLang=lang;render()};
+${r.map((s,i)=>`<div class="card"><h3>${i+1}. ${s.n}</h3><div class="bar"><i style="width:${s.s[prio]*20}%"></i></div><p><b>Why:</b> ${s.why}<br><b>Evidence:</b> ${s.ev}<br><b>Benefits:</b> ${s.ben}<br><b>Gaps:</b> ${s.gap}<br><b>Risks:</b> ${s.rk}</p><button class="btn" data-act="saveadv" data-n="${i}">Save to history</button></div>`).join("")}<p class="note">Scores are sample reasoning. Supports farmer judgment; confirm with local agri experts.</p>`},
+doctor:()=>`<h2>🩺 ${t("doctor")}</h2><div class="card"><input type="file" accept="image/*" capture="environment" id="ph">${photo?`<img class="thumb" src="${photo}" alt="">`:""}<p>${Object.entries(SYM).map(([k,v])=>`<label class="chk"><input type="checkbox" class="sy" value="${k}">${v}</label>`).join("")}</p><button class="btn" data-act="diag">Check</button><p class="note">Symptom checker on your device. Photos are attached to the report, not analysed by AI.</p></div><div id="dr"></div><div class="card"><h3>⏰ Reminders</h3>${ld("sprRem",[]).map(r=>`<p>${new Date(r.due)<new Date()?"🔔 Due":"⏳"} ${esc(r.txt)} (${new Date(r.due).toLocaleDateString()})</p>`).join("")||"<p class=note>None.</p>"}</div><div class="card"><h3>📓 Treatment log</h3>${list("sprLog")}</div>`,
+alerts:()=>`<h2>${t("alerts")}</h2><div id="al">Loading forecast…</div><button class="btn" data-act="bulletin">🔊 Read bulletin</button>`,
+map:()=>`<h2>${t("map")}</h2><div id="lm"></div><button class="btn" data-act="draw">✏️ Draw field</button><button class="btn alt" data-act="fin">✔ Finish</button><div class="card" id="mi">Tap the map for live weather and NASA soil data.</div>`,
+market:()=>`<h2>${t("market")}</h2><div class="card"><h3>🧺 Sell</h3>${adder("sprMkt","Crop, kg, LKR/kg")}${list("sprMkt")}</div><div class="card"><h3>🛒 Buyer requests</h3>${adder("sprBuy","Crop, kg, district")}${list("sprBuy")}</div><div class="card"><h3>🚚 Transport offers</h3>${adder("sprTr","Vehicle, capacity, district")}${list("sprTr")}</div><p class="note">Lists are stored on this device until a shared database is added.</p>`,
+fert:()=>{const pr=ld("sprFP",{});return `<h2>${t("fert")}</h2>${["Urea","TSP","MOP","Compost"].map(f=>`<div class="card">🧪 ${f} <input type="number" data-fp="${f}" placeholder="LKR per kg" value="${pr[f]||""}"></div>`).join("")}<p class="note">Enter local prices to track costs.</p><a class="btn" href="#advice">💡 ${t("advice")}</a>`},
+budget:()=>`<h2>${t("budget")}</h2><div class="card"><input id="bg" type="number" placeholder="LKR" value="${esc(ld("sprBudget",""))}"><button class="btn" data-act="budget">${t("save")}</button></div><div class="card"><h3>📉 Loss estimator</h3><input id="y1" type="number" placeholder="Hectares"><input id="y2" type="number" placeholder="Expected kg per ha"><input id="y3" type="number" placeholder="Price LKR per kg"><input id="y4" type="number" placeholder="Estimated loss %"><button class="btn" data-act="loss">Calculate</button><p id="yo"></p></div>`,
+contact:()=>`<h2>${t("contact")}</h2><div class="card"><a class="btn" href="tel:0000000000">📞 Agri department hotline (sample)</a><a class="btn alt" href="mailto:help@example.org">✉️ Email</a></div><div class="card"><h3>👥 Community</h3>${adder("sprCom","Share a tip or question","Post")}${list("sprCom")}</div><div class="card"><h3>🤝 Charity (sample)</h3><p>Farmers' Friends: seed donation drive</p></div>`};
+const H={
+async home(){if(!user)return;try{const w=await weather(...here());$("hw").textContent=`${w.current.temperature_2m}°C, wind ${w.current.wind_speed_10m} km/h`}catch{}},
+async alerts(){const el=$("al");try{const w=await weather(...here());let n=NA;try{n=await nasa(...here())}catch{}el.innerHTML=alertsFrom(w,n).map(a=>`<div class="card ${a[2]}">${a[0]} ${a[1]} <a href="#${a[3]}">→ ${t(a[3])}</a></div>`).join("")+ld("sprRem",[]).filter(r=>new Date(r.due)<new Date()).map(r=>`<div class="card warn">🔔 Reminder: ${esc(r.txt)}</div>`).join("")}catch{el.textContent="Offline: forecast unavailable."}},
+async advice(){const el=$("nz");try{const n=await nasa(...here());el.innerHTML=nasaHtml(n)+`<p class="note">${n.root<.3?"Dry soil: water-saving rotations look stronger.":"Soil moisture is not limiting now."}</p>`}catch{el.textContent="NASA data unavailable offline."}},
+map(){const m=L.map("lm").setView([7.8,80.7],7);L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap"}).addTo(m);window._m=m;window._pts=[];window._dr=false;
+D.forEach(d=>L.marker(DC[d]).addTo(m).bindTooltip(d));ld("sprFields",[]).forEach(f=>L.marker([f.lat,f.lon]).addTo(m).bindTooltip(f.name));
+m.on("click",async e=>{if(window._dr){window._pts.push(e.latlng);L.circleMarker(e.latlng,{radius:4}).addTo(m);return}
+const {lat,lng}=e.latlng,mi=$("mi");mi.textContent="Loading…";try{const[w,n]=await Promise.all([weather(lat,lng),nasa(lat,lng)]);mi.innerHTML=`<b>${lat.toFixed(2)}, ${lng.toFixed(2)}</b><p>🌤️ ${w.current.temperature_2m}°C, rain next 3 days: ${w.daily.precipitation_sum.join(", ")} mm</p>`+nasaHtml(n)}catch{mi.textContent="Data unavailable."}})}};
+function render(){const h=(location.hash||"#home").slice(1),pg=P[h]?h:"home";view.innerHTML=P[pg]();$("nav").innerHTML=TABS.map(([k,e])=>`<a class="cube ${k===pg?"on":""}" href="#${k}"><b>${e}</b><span>${esc(t(k))}</span></a>`).join("");document.documentElement.lang=lang;$("install").textContent="⬇️ "+t("install");H[pg]?.()}
+const view=$("view");
+function say(x){if(!window.speechSynthesis)return;const u=new SpeechSynthesisUtterance(x);u.lang=VL[lang];speechSynthesis.speak(u)}
+function reply(q){const k=KB.find(x=>x[0].test(q));return k?k[1]():"I can help with rain, water, fertilizer, pests, crops and selling. Use Agri officer for other questions."}
+function ask(q){if(!q)return;chat.push(["u",q]);const a=reply(q);chat.push(["b",a]);render();say(a)}
+function shrink(f,cb){const i=new Image();i.onload=()=>{const c=document.createElement("canvas");c.width=160;c.height=160*i.height/i.width;c.getContext("2d").drawImage(i,0,0,c.width,c.height);cb(c.toDataURL("image/jpeg",.6))};i.src=URL.createObjectURL(f)}
+document.addEventListener("change",e=>{if(e.target.id=="ph")shrink(e.target.files[0],d=>{photo=d;render()});if(e.target.dataset.fp){const p=ld("sprFP",{});p[e.target.dataset.fp]=e.target.value;sv("sprFP",p)}});
+document.addEventListener("click",e=>{const b=e.target.closest("[data-act]");if(!b)return;const a=b.dataset.act;
+if(a=="login"){user={...user,name:val("ln")||"Farmer",district:val("ld")};if(user.lat&&!user.gps)delete user.lat;sv("sprUser",user);location.hash="#account";render();return}
+if(a=="logout"){user=null;localStorage.removeItem("sprUser");render();return}
+if(a=="gps"){navigator.geolocation?.getCurrentPosition(p=>{user={...(user||{name:"Farmer",district:"Anuradhapura"}),lat:p.coords.latitude,lon:p.coords.longitude,gps:1};sv("sprUser",user);alert("Location saved.");render()},()=>alert("Location unavailable. Choose a district manually."));return}
+if(a=="add"){const v=val("in_"+b.dataset.k);if(v){sv(b.dataset.k,[...ld(b.dataset.k,[]),v]);render()}return}
+if(a=="saveadv"){const s=[...STRAT].sort((x,y)=>y.s[prio]-x.s[prio])[b.dataset.n];sv("sprAdv",[...ld("sprAdv",[]),new Date().toLocaleDateString()+": "+s.n]);alert("Saved to history.");return}
+if(a=="prio"){prio=b.dataset.k;render();return}
+if(a=="chat"){ask(val("cq"));return}
+if(a=="spec"){$("cn").textContent="Agri officer chat needs a server. Use Contact to call the agri department.";return}
+if(a=="voice"){const R=window.SpeechRecognition||window.webkitSpeechRecognition;if(!R){$("cn").textContent="Voice input is not supported in this browser.";return}const r=new R();r.lang=VL[lang];r.onresult=x=>ask(x.results[0][0].transcript);r.onerror=()=>$("cn").textContent="Could not hear. Try again.";r.start();return}
+if(a=="diag"){const s=[...document.querySelectorAll(".sy:checked")].map(x=>x.value);const r=CAUSE.map(c=>[c,c[1].filter(x=>s.includes(x)).length]).filter(x=>x[1]).sort((x,y)=>y[1]-x[1]).slice(0,3);
+$("dr").innerHTML=r.length?`<div class="card"><h3>Likely causes</h3>${photo?`<img class="thumb" src="${photo}" alt="">`:""}${r.map(([c])=>`<p><b>${c[0]}</b><br>${c[2]}</p>`).join("")}<p class="note">First opinion only. Confirm locally and use registered products.</p><button class="btn" data-act="remind" data-t="${esc(r[0][0][0])}">⏰ Re-check in 7 days</button><button class="btn alt" onclick="print()">🖨️ Save PDF</button></div>`:`<div class="card">Pick at least one symptom.</div>`;if(r.length)sv("sprLog",[...ld("sprLog",[]),new Date().toLocaleDateString()+": "+r[0][0][0]]);return}
+if(a=="remind"){sv("sprRem",[...ld("sprRem",[]),{txt:"Re-check: "+b.dataset.t,due:Date.now()+7*864e5}]);alert("Reminder set for 7 days.");return}
+if(a=="bulletin"){say([...document.querySelectorAll("#al .card")].map(x=>x.textContent).join(". "));return}
+if(a=="draw"){window._dr=true;window._pts=[];$("mi").textContent="Tap field corners, then Finish.";return}
+if(a=="fin"){const p=window._pts;if(p.length<3){$("mi").textContent="Need at least 3 points.";return}const la=p.reduce((s,x)=>s+x.lat,0)/p.length,lo=p.reduce((s,x)=>s+x.lng,0)/p.length,k=111320,xy=p.map(x=>[(x.lng-lo)*k*Math.cos(la*Math.PI/180),(x.lat-la)*k]);let ar=0;xy.forEach((q,i)=>{const n=xy[(i+1)%xy.length];ar+=q[0]*n[1]-n[0]*q[1]});const ha=+(Math.abs(ar)/2/1e4).toFixed(2);L.polygon(p).addTo(window._m);window._dr=false;sv("sprFields",[...ld("sprFields",[]),{name:"Field "+(ld("sprFields",[]).length+1),lat:la,lon:lo,ha}]);$("mi").textContent="Field saved: "+ha+" ha. See My account.";return}
+if(a=="budget"){sv("sprBudget",val("bg"));alert("Saved to My account.");return}
+if(a=="loss"){$("yo").textContent="Estimated loss: "+Math.round(val("y1")*val("y2")*val("y3")*val("y4")/100).toLocaleString()+" LKR";return}});
+$("lang").value=lang;$("lang").onchange=e=>{lang=e.target.value;localStorage.sprLang=lang;render()};
 addEventListener("hashchange",()=>{render();scrollTo(0,0)});
 addEventListener("scroll",()=>document.documentElement.style.setProperty("--gr",Math.min(scrollY/400,1)),{passive:true});
-let dp;addEventListener("beforeinstallprompt",e=>{e.preventDefault();dp=e});
-document.getElementById("install").onclick=()=>dp?(dp.prompt(),dp=null):alert("Open your browser menu and choose Add to Home screen.");
+// install button: only when installable and not already installed
+const inst=$("install"),standalone=matchMedia("(display-mode: standalone)").matches||navigator.standalone;let dp;
+addEventListener("beforeinstallprompt",e=>{e.preventDefault();dp=e;if(!standalone)inst.hidden=false});
+addEventListener("appinstalled",()=>{inst.hidden=true;dp=null});
+if(!standalone&&/iphone|ipad/i.test(navigator.userAgent))inst.hidden=false;
+inst.onclick=()=>dp?(dp.prompt(),dp.userChoice.then(()=>{inst.hidden=true}),dp=null):alert("Tap Share, then Add to Home Screen.");
 if("serviceWorker"in navigator)navigator.serviceWorker.register("sw.js");
 render();
